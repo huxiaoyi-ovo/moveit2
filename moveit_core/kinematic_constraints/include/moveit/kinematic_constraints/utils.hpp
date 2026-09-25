@@ -54,9 +54,10 @@ namespace kinematic_constraints
  * \brief Merge two sets of constraints into one.
  *
  * This just does appending of all constraints except joint
- * constraints. For members of type \ref JointConstraint, the bounds
- * specified in the parameter \e first take precedence over parameter
- * \e second
+ * constraints. For members of type \ref JointConstraint that refer to
+ * the same joint, overlapping bounds are intersected. Incompatible
+ * bounds are both retained so that the merged constraint set remains
+ * unsatisfiable.
  *
  * @param [in] first The first constraint to merge
  * @param [in] second The second constraint to merge

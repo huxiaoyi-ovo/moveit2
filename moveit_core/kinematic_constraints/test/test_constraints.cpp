@@ -35,6 +35,7 @@
 /* Author: Ioan Sucan, E. Gil Jones */
 
 #include <moveit/kinematic_constraints/kinematic_constraint.hpp>
+#include <moveit/kinematic_constraints/utils.hpp>
 #include <gtest/gtest.h>
 #include <urdf_parser/urdf_parser.h>
 #include <fstream>
@@ -171,6 +172,40 @@ TEST_F(LoadPlanningModelsPr2, JointConstraintsSimple)
   jc2.clear();
   EXPECT_FALSE(jc2.enabled());
   EXPECT_FALSE(jc.equal(jc2, 1e-12));
+}
+
+TEST_F(LoadPlanningModelsPr2, MergeIncompatibleJointConstraintsPreservesConflict)
+{
+  moveit_msgs::msg::JointConstraint first_joint;
+  first_joint.joint_name = "head_pan_joint";
+  first_joint.position = 0.4;
+  first_joint.tolerance_above = 0.01;
+  first_joint.tolerance_below = 0.01;
+  first_joint.weight = 1.0;
+
+  moveit_msgs::msg::JointConstraint second_joint = first_joint;
+  second_joint.position = 0.0;
+
+  moveit_msgs::msg::Constraints first;
+  first.joint_constraints.push_back(first_joint);
+
+  moveit_msgs::msg::Constraints second;
+  second.joint_constraints.push_back(second_joint);
+
+  const moveit_msgs::msg::Constraints merged = kinematic_constraints::mergeConstraints(first, second);
+  ASSERT_EQ(merged.joint_constraints.size(), 2u);
+
+  moveit::core::Transforms tf(robot_model_->getModelFrame());
+  kinematic_constraints::KinematicConstraintSet kcs(robot_model_);
+  EXPECT_TRUE(kcs.add(merged, tf));
+
+  moveit::core::RobotState robot_state(robot_model_);
+  robot_state.setToDefaultValues();
+  EXPECT_FALSE(kcs.decide(robot_state).satisfied);
+
+  double value = first_joint.position;
+  robot_state.setJointPositions(first_joint.joint_name, &value);
+  EXPECT_FALSE(kcs.decide(robot_state).satisfied);
 }
 
 TEST_F(LoadPlanningModelsPr2, JointConstraintsCont)
