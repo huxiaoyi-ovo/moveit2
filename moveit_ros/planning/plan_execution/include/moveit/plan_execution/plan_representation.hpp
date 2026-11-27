@@ -80,6 +80,9 @@ struct ExecutableMotionPlan
   /// The trace of the trajectory recorded during execution
   robot_trajectory::RobotTrajectoryPtr executed_trajectory;
 
+  /// Time (in seconds) spent planning the trajectory in plan_components.
+  double planning_time{ 0.0 };
+
   /// An error code reflecting what went wrong (if anything)
   moveit_msgs::msg::MoveItErrorCodes error_code;
 

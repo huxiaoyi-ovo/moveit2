@@ -38,6 +38,9 @@
 
 #include <gtest/gtest.h>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <moveit_msgs/action/move_group.hpp>
+#include <control_msgs/action/follow_joint_trajectory.hpp>
 
 #include "parameter_name_list.hpp"
 
@@ -90,6 +93,57 @@ TEST_F(MoveGroupFixture, testParamAPI)
                    param_name.c_str());
     }
     EXPECT_TRUE(param_exists);
+  }
+}
+
+TEST_F(MoveGroupFixture, testPlanningTimeInMoveAction)
+{
+  using MoveGroup = moveit_msgs::action::MoveGroup;
+  using FollowJointTrajectory = control_msgs::action::FollowJointTrajectory;
+  auto client = rclcpp_action::create_client<MoveGroup>(test_node_, "/move_action");
+  auto controller = rclcpp_action::create_client<FollowJointTrajectory>(
+      test_node_, "/panda_arm_controller/follow_joint_trajectory");
+  ASSERT_TRUE(client->wait_for_action_server(std::chrono::seconds(10)));
+  ASSERT_TRUE(controller->wait_for_action_server(std::chrono::seconds(10)));
+
+  MoveGroup::Goal goal;
+  goal.request.group_name = "panda_arm";
+  goal.request.pipeline_id = "ompl";
+  goal.request.allowed_planning_time = 5.0;
+  goal.request.num_planning_attempts = 1;
+  goal.request.max_velocity_scaling_factor = 0.5;
+  goal.request.max_acceleration_scaling_factor = 0.5;
+  goal.request.start_state.is_diff = true;
+  goal.planning_options.planning_scene_diff.robot_state.is_diff = true;
+  moveit_msgs::msg::JointConstraint joint;
+  joint.joint_name = "panda_joint7";
+  joint.position = 0.905;
+  joint.tolerance_above = 0.001;
+  joint.tolerance_below = 0.001;
+  joint.weight = 1.0;
+  moveit_msgs::msg::Constraints constraints;
+  constraints.joint_constraints.push_back(joint);
+  goal.request.goal_constraints.push_back(constraints);
+
+  // Planning alone leaves the robot at its starting pose.
+  for (const bool plan_only : { true, false })
+  {
+    SCOPED_TRACE(plan_only);
+    goal.planning_options.plan_only = plan_only;
+    auto goal_future = client->async_send_goal(goal);
+    ASSERT_EQ(rclcpp::spin_until_future_complete(test_node_, goal_future, std::chrono::seconds(5)),
+              rclcpp::FutureReturnCode::SUCCESS);
+    auto goal_handle = goal_future.get();
+    ASSERT_TRUE(goal_handle);
+    auto result_future = client->async_get_result(goal_handle);
+    ASSERT_EQ(rclcpp::spin_until_future_complete(test_node_, result_future, std::chrono::seconds(10)),
+              rclcpp::FutureReturnCode::SUCCESS);
+    const auto result = result_future.get();
+    ASSERT_TRUE(result.result);
+    ASSERT_EQ(result.code, rclcpp_action::ResultCode::SUCCEEDED);
+    ASSERT_EQ(result.result->error_code.val, moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+    ASSERT_FALSE(result.result->planned_trajectory.joint_trajectory.points.empty());
+    EXPECT_GT(result.result->planning_time, 0.0);
   }
 }
 
